@@ -21,33 +21,7 @@ import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
 import org.scalatest.FunSuite
 
-case class Empty()
-case class Value(id: Int, value: Option[String])
-case class Value2(id: Int, seq: Option[Int], value: Option[String])
-case class Value3(id: Int, left_value: String, right_value: String, value: String)
-case class Value4(id: Int, diff: String)
-case class Value5(first_id: Int, id: String)
-case class Value6(id: Int, label: String)
-
-case class DiffAs(diff: String,
-                  id: Int,
-                  left_value: Option[String],
-                  right_value: Option[String])
-case class DiffAsCustom(action: String,
-                        id: Int,
-                        before_value: Option[String],
-                        after_value: Option[String])
-case class DiffAsSubset(diff: String,
-                        id: Int,
-                        left_value: Option[String])
-case class DiffAsExtra(diff: String,
-                       id: Int,
-                       left_value: Option[String],
-                       right_value: Option[String],
-                       extra: String)
-
 class DiffSuite extends FunSuite with SparkTestSession {
-
   import spark.implicits._
 
   lazy val left: Dataset[Value] = Seq(
@@ -522,8 +496,8 @@ class DiffSuite extends FunSuite with SparkTestSession {
 
     doTestRequirement(left.diff(right),
       "The datasets do not have the same schema.\n" +
-        "Left extra columns: value (StringType)\n" +
-        "Right extra columns: value (IntegerType)")
+        "left extra columns: value (StringType)\n" +
+        "right extra columns: value (IntegerType)")
   }
 
   test("diff with different nullability") {
@@ -550,8 +524,8 @@ class DiffSuite extends FunSuite with SparkTestSession {
 
     doTestRequirement(left.diff(right, "id"),
       "The datasets do not have the same schema.\n" +
-        "Left extra columns: value (StringType)\n" +
-        "Right extra columns: comment (StringType)")
+        "left extra columns: value (StringType)\n" +
+        "right extra columns: comment (StringType)")
   }
 
   test("diff with case-insensitive column names") {
@@ -576,8 +550,8 @@ class DiffSuite extends FunSuite with SparkTestSession {
     withSQLConf(SQLConf.CASE_SENSITIVE.key -> "true") {
       doTestRequirement(left.diff(right, "id"),
         "The datasets do not have the same schema.\n" +
-          "Left extra columns: id (IntegerType), value (StringType)\n" +
-          "Right extra columns: ID (IntegerType), VaLuE (StringType)")
+          "left extra columns: id (IntegerType), value (StringType)\n" +
+          "right extra columns: ID (IntegerType), VaLuE (StringType)")
     }
   }
 
@@ -592,9 +566,9 @@ class DiffSuite extends FunSuite with SparkTestSession {
     val right = Seq((1, 1, "str")).toDF("id", "seq", "value")
 
     doTestRequirement(left.diff(right, "id"),
-      "The number of columns doesn't match.\n" +
-        "Left column names (2): id, value\n" +
-        "Right column names (3): id, seq, value")
+      "The datasets do not have the same schema.\n" +
+        "left extra columns: \n" +
+        "right extra columns: seq (IntegerType)")
   }
 
   test("diff as U") {
