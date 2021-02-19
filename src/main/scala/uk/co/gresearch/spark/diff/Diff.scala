@@ -23,12 +23,12 @@ import uk.co.gresearch.spark.backticks
 import uk.co.gresearch.spark.diff.DiffMode.DiffMode
 
 /**
- * Differ class to diff two Datasets. See Diff.of(…) for details.
+ * Differ class to diff two Datasets. See Differ.of(…) for details.
  * @param options options for the diffing process
  */
-class Diff(options: DiffOptions) {
+class Differ(options: DiffOptions) {
 
-  private def checkSchema[T](left: Dataset[T], right: Dataset[T], idColumns: String*): Unit = {
+  private[diff] def checkSchema[T](left: Dataset[T], right: Dataset[T], idColumns: String*): Unit = {
     require(left.columns.length == left.columns.toSet.size &&
       right.columns.length == right.columns.toSet.size,
       "The datasets have duplicate columns.\n" +
@@ -101,7 +101,7 @@ class Diff(options: DiffOptions) {
    * @param nonIdColumns value column names
    * @return left and right diff value column names
    */
-  private def getDiffValueColumns(nonIdColumns: Seq[String], diffMode: DiffMode): Seq[String] = {
+  private[diff] def getDiffValueColumns(nonIdColumns: Seq[String], diffMode: DiffMode): Seq[String] = {
     def prefixColumns(columns: Seq[String])(prefix: String): Seq[String] =
       columns.map(column => s"${prefix}_$column")
 
@@ -143,7 +143,7 @@ class Diff(options: DiffOptions) {
    *   val df1 = Seq((1, "one"), (2, "two"), (3, "three")).toDF("id", "value")
    *   val df2 = Seq((1, "one"), (2, "Two"), (4, "four")).toDF("id", "value")
    *
-   *   df1.diff(df2).show()
+   *   differ.diff(df1, df2).show()
    *
    *   // output:
    *   // +----+---+-----+
@@ -156,7 +156,7 @@ class Diff(options: DiffOptions) {
    *   // |   I|  4| four|
    *   // +----+---+-----+
    *
-   *   df1.diff(df2, "id").show()
+   *   differ.diff(df1, df2, "id").show()
    *
    *   // output:
    *   // +----+---+----------+-----------+
@@ -175,7 +175,7 @@ class Diff(options: DiffOptions) {
    * columns are in the order of this Dataset.
    */
   @scala.annotation.varargs
-  def of[T](left: Dataset[T], right: Dataset[T], idColumns: String*): DataFrame = {
+  def diff[T](left: Dataset[T], right: Dataset[T], idColumns: String*): DataFrame = {
     checkSchema(left, right, idColumns: _*)
 
     val pkColumns = if (idColumns.isEmpty) left.columns.toList else idColumns
@@ -196,7 +196,7 @@ class Diff(options: DiffOptions) {
         otherwise(lit(options.nochangeDiffValue)).
         as(options.diffColumn)
 
-    val diffColumns = getDiffColumns(options, pkColumns, otherColumns, left, right)
+    val diffColumns = getDiffColumns(pkColumns, otherColumns, left, right)
 
     val changeColumn =
       options.changeColumn
@@ -224,8 +224,8 @@ class Diff(options: DiffOptions) {
       .select((diffCondition +: changeColumn) ++ diffColumns: _*)
   }
 
-  def getDiffColumns[T](options: DiffOptions, pkColumns: Seq[String], otherColumns: Seq[String],
-                        left: Dataset[T], right: Dataset[T]): Seq[Column] = {
+  private[diff] def getDiffColumns[T](pkColumns: Seq[String], otherColumns: Seq[String],
+                                      left: Dataset[T], right: Dataset[T]): Seq[Column] = {
     val idColumns = pkColumns.map(c => coalesce(left(backticks(c)), right(backticks(c))).as(c))
 
     val (leftValues, rightValues) = if (options.sparseMode) {
@@ -264,26 +264,27 @@ class Diff(options: DiffOptions) {
   /**
    * Returns a new Dataset that contains the differences between the two Datasets of the same type `T`.
    *
-   * See `of(Dataset[T], Dataset[T], String*`.
+   * See `diff(Dataset[T], Dataset[T], String*`.
    *
    * This requires an additional implicit `Encoder[U]` for the return type `Dataset[U]`.
    */
-  @scala.annotation.varargs
-  def ofAs[T, U](left: Dataset[T], right: Dataset[T], idColumns: String*)
-               (implicit diffEncoder: Encoder[U]): Dataset[U] = {
-    ofAs(left, right, diffEncoder, idColumns: _*)
+  // no @scala.annotation.varargs here as implicit arguments are explicit in Java
+  // this signature is redundant to the other ofAs method in Java
+  def diffAs[T, U](left: Dataset[T], right: Dataset[T], idColumns: String*)
+                  (implicit diffEncoder: Encoder[U]): Dataset[U] = {
+    diffAs(left, right, diffEncoder, idColumns: _*)
   }
 
   /**
    * Returns a new Dataset that contains the differences between the two Datasets of the same type `T`.
    *
-   * See `of(Dataset[T], Dataset[T], String*`.
+   * See `diff(Dataset[T], Dataset[T], String*`.
    *
    * This requires an additional explicit `Encoder[U]` for the return type `Dataset[U]`.
    */
   @scala.annotation.varargs
-  def ofAs[T, U](left: Dataset[T], right: Dataset[T],
-                 diffEncoder: Encoder[U], idColumns: String*): Dataset[U] = {
+  def diffAs[T, U](left: Dataset[T], right: Dataset[T],
+                   diffEncoder: Encoder[U], idColumns: String*): Dataset[U] = {
     val nonIdColumns = left.columns.diff(if (idColumns.isEmpty) left.columns.toList else idColumns)
     val encColumns = diffEncoder.schema.fields.map(_.name)
     val diffColumns = Seq(options.diffColumn) ++ idColumns ++ getDiffValueColumns(nonIdColumns, options.diffMode)
@@ -293,7 +294,7 @@ class Diff(options: DiffOptions) {
       s"Diff encoder's columns must be part of the diff result schema, " +
         s"these columns are unexpected: ${extraColumns.mkString(", ")}")
 
-    of(left, right, idColumns: _*).as[U](diffEncoder)
+    diff(left, right, idColumns: _*).as[U](diffEncoder)
   }
 
 }
@@ -302,14 +303,14 @@ class Diff(options: DiffOptions) {
  * Diffing singleton with default diffing options.
  */
 object Diff {
-  val default = new Diff(DiffOptions.default)
+  val default = new Differ(DiffOptions.default)
 
   /**
    * Provides a string  that is distinct w.r.t. the given strings.
    * @param existing strings
    * @return distinct string w.r.t. existing
    */
-  def distinctStringNameFor(existing: Seq[String]): String = {
+  private[diff] def distinctStringNameFor(existing: Seq[String]): String = {
     "_" * (existing.map(_.length).reduceOption(_ max _).getOrElse(0) + 1)
   }
 
@@ -335,7 +336,7 @@ object Diff {
    *   val df1 = Seq((1, "one"), (2, "two"), (3, "three")).toDF("id", "value")
    *   val df2 = Seq((1, "one"), (2, "Two"), (4, "four")).toDF("id", "value")
    *
-   *   df1.diff(df2).show()
+   *   Diff.of(df1, df2).show()
    *
    *   // output:
    *   // +----+---+-----+
@@ -348,7 +349,7 @@ object Diff {
    *   // |   I|  4| four|
    *   // +----+---+-----+
    *
-   *   df1.diff(df2, "id").show()
+   *   Diff.of(df1, df2, "id").show()
    *
    *   // output:
    *   // +----+---+----------+-----------+
@@ -368,7 +369,7 @@ object Diff {
    */
   @scala.annotation.varargs
   def of[T](left: Dataset[T], right: Dataset[T], idColumns: String*): DataFrame =
-    default.of(left, right, idColumns: _*)
+    default.diff(left, right, idColumns: _*)
 
   /**
    * Returns a new Dataset that contains the differences between the two Datasets of the same type `T`.
@@ -377,10 +378,11 @@ object Diff {
    *
    * This requires an additional implicit `Encoder[U]` for the return type `Dataset[U]`.
    */
-  @scala.annotation.varargs
+  // no @scala.annotation.varargs here as implicit arguments are explicit in Java
+  // this signature is redundant to the other ofAs method in Java
   def ofAs[T, U](left: Dataset[T], right: Dataset[T], idColumns: String*)
                 (implicit diffEncoder: Encoder[U]): Dataset[U] =
-    default.ofAs(left, right, idColumns: _*)
+    default.diffAs(left, right, idColumns: _*)
 
   /**
    * Returns a new Dataset that contains the differences between the two Datasets of the same type `T`.
@@ -392,6 +394,6 @@ object Diff {
   @scala.annotation.varargs
   def ofAs[T, U](left: Dataset[T], right: Dataset[T],
                  diffEncoder: Encoder[U], idColumns: String*): Dataset[U] =
-    default.ofAs(left, right, diffEncoder, idColumns: _*)
+    default.diffAs(left, right, diffEncoder, idColumns: _*)
 
 }
