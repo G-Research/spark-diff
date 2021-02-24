@@ -98,7 +98,7 @@
 
   <build>
     <sourceDirectory>src/main/scala</sourceDirectory>
-    <testSourceDirectory>src/test</testSourceDirectory>
+    <testSourceDirectory>src/test/java</testSourceDirectory>
 
     <resources>
       <resource>
@@ -153,16 +153,13 @@
           </execution>
         </executions>
       </plugin>
-      <!-- disable surefire -->
+      <!-- run java tests -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.0.0-M3</version>
-        <configuration>
-          <skipTests>false</skipTests>
-        </configuration>
       </plugin>
-      <!-- enable scalatest -->
+      <!-- run scalatest -->
       <plugin>
         <groupId>org.scalatest</groupId>
         <artifactId>scalatest-maven-plugin</artifactId>
