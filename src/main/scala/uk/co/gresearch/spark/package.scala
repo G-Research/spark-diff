@@ -121,6 +121,15 @@ package object spark {
         .write
         .partitionBy(partitionColumnsMap.keys.toSeq: _*)
     }
+
+    /**
+     * Add the observation to the Dataset.
+     *
+     * @param observation observation
+     * @return observed dataset
+     */
+    def observe(observation: Observation): Dataset[D] = observation.observe(df)
+
   }
 
 }
